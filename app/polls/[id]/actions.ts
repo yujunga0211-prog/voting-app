@@ -19,6 +19,7 @@ export async function voteAction(
 
   if (result === "poll_not_found") notFound();
   if (result === "option_not_in_poll") return { error: "이 Poll의 선택지가 아닙니다. 다시 골라 주세요." };
-  // "voted"와 "already_voted" 모두 같은 Poll 페이지로 보내면 Results가 보인다.
+  // "voted", "already_voted", "poll_closed" 모두 같은 Poll 페이지로 보내면 Results가 보인다
+  // (Closed Poll은 누구에게나 Results와 "마감된 Poll입니다" 안내가 보인다).
   redirect(`/polls/${pollId}`);
 }

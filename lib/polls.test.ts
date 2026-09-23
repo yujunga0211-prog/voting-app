@@ -205,7 +205,7 @@ describe("castVote and Results", () => {
 
     expect(await polls.getPollView(pollId, alice)).toEqual({
       kind: "results",
-      poll: { id: pollId, question: "점심?" },
+      poll: { id: pollId, question: "점심?", closesAt: null, isClosed: false },
       options: [
         { id: optionIds[0], text: "김밥", votes: 0 },
         { id: optionIds[1], text: "라면", votes: 1 },
@@ -300,5 +300,137 @@ describe("castVote and Results", () => {
     expect(await polls.castVote({ pollId: b.pollId, optionId: b.optionIds[1], voterId: alice })).toBe(
       "voted",
     );
+  });
+});
+
+describe("closing time", () => {
+  // 테스트가 현재 시각을 조절할 수 있도록 clock을 주입한다.
+  const T0 = new Date("2026-09-23T03:00:00Z"); // 한국 시간 12:00
+  const HOUR = 60 * 60 * 1000;
+  const DAY = 24 * HOUR;
+  let now = T0;
+  const timed = createPolls(testSql, () => now);
+
+  beforeEach(() => {
+    now = T0;
+  });
+
+  async function makePoll(closesAt: Date | null) {
+    const created = await timed.createPoll({ question: "마감 테스트?", options: ["a", "b"], closesAt });
+    if (!created.ok) throw new Error(`expected Poll: ${JSON.stringify(created.errors)}`);
+    const view = await timed.getPollView(created.pollId, null);
+    if (!view) throw new Error("expected view");
+    return { pollId: created.pollId, optionIds: view.options.map((o) => o.id) };
+  }
+
+  it("accepts a closing time in the future within 30 days, or none", async () => {
+    for (const closesAt of [null, new Date(T0.getTime() + 1000), new Date(T0.getTime() + 30 * DAY)]) {
+      const created = await timed.createPoll({ question: "Q?", options: ["a", "b"], closesAt });
+      expect(created.ok).toBe(true);
+    }
+  });
+
+  it("rejects a closing time that is now or in the past", async () => {
+    for (const closesAt of [T0, new Date(T0.getTime() - HOUR)]) {
+      expect(await timed.createPoll({ question: "Q?", options: ["a", "b"], closesAt })).toEqual({
+        ok: false,
+        errors: { closesAt: "마감 시각은 지금보다 뒤로 정해 주세요." },
+      });
+    }
+  });
+
+  it("rejects a closing time more than 30 days away or an invalid date", async () => {
+    expect(
+      await timed.createPoll({
+        question: "Q?",
+        options: ["a", "b"],
+        closesAt: new Date(T0.getTime() + 30 * DAY + 1000),
+      }),
+    ).toEqual({ ok: false, errors: { closesAt: "마감 시각은 30일 이내로 정해 주세요." } });
+
+    expect(
+      await timed.createPoll({ question: "Q?", options: ["a", "b"], closesAt: new Date("nope") }),
+    ).toEqual({ ok: false, errors: { closesAt: "마감 시각이 올바르지 않습니다." } });
+  });
+
+  it("reports a closing time error together with other errors", async () => {
+    const created = await timed.createPoll({ question: "", options: ["a"], closesAt: T0 });
+    expect(created).toEqual({
+      ok: false,
+      errors: {
+        question: "질문을 입력해 주세요.",
+        options: "선택지를 2개 이상 입력해 주세요.",
+        closesAt: "마감 시각은 지금보다 뒤로 정해 주세요.",
+      },
+    });
+  });
+
+  it("shows the closing time and Open state before it, and becomes Closed exactly at it", async () => {
+    const closesAt = new Date(T0.getTime() + HOUR);
+    const { pollId } = await makePoll(closesAt);
+
+    now = new Date(closesAt.getTime() - 1);
+    expect((await timed.getPollView(pollId, null))?.poll).toEqual({
+      id: pollId,
+      question: "마감 테스트?",
+      closesAt,
+      isClosed: false,
+    });
+
+    now = closesAt;
+    expect((await timed.getPollView(pollId, null))?.poll.isClosed).toBe(true);
+  });
+
+  it("rejects a Vote on a Closed Poll without changing the counts", async () => {
+    const closesAt = new Date(T0.getTime() + HOUR);
+    const { pollId, optionIds } = await makePoll(closesAt);
+    await timed.castVote({ pollId, optionId: optionIds[0], voterId: "early" });
+
+    now = closesAt;
+    expect(await timed.castVote({ pollId, optionId: optionIds[1], voterId: "late" })).toBe(
+      "poll_closed",
+    );
+    expect(await timed.castVote({ pollId, optionId: "not-a-uuid", voterId: "late" })).toBe(
+      "poll_closed",
+    );
+
+    const view = await timed.getPollView(pollId, "late");
+    if (view?.kind !== "results") throw new Error("expected results");
+    expect(view.options.map((o) => o.votes)).toEqual([1, 0]);
+  });
+
+  it("shows Results of a Closed Poll to anyone, with my choice only for a Voter who voted", async () => {
+    const closesAt = new Date(T0.getTime() + HOUR);
+    const { pollId, optionIds } = await makePoll(closesAt);
+    await timed.castVote({ pollId, optionId: optionIds[1], voterId: "alice" });
+
+    now = closesAt;
+    const anonymous = await timed.getPollView(pollId, null);
+    const nonVoter = await timed.getPollView(pollId, "bob");
+    const voter = await timed.getPollView(pollId, "alice");
+
+    for (const view of [anonymous, nonVoter]) {
+      expect(view).toMatchObject({ kind: "results", totalVotes: 1, myOptionId: null });
+    }
+    expect(voter).toMatchObject({ kind: "results", myOptionId: optionIds[1] });
+  });
+
+  it("keeps the old rule for an Open Poll: only a Voter who voted sees Results", async () => {
+    const { pollId, optionIds } = await makePoll(new Date(T0.getTime() + HOUR));
+    await timed.castVote({ pollId, optionId: optionIds[0], voterId: "alice" });
+
+    expect((await timed.getPollView(pollId, "bob"))?.kind).toBe("form");
+    expect((await timed.getPollView(pollId, "alice"))?.kind).toBe("results");
+  });
+
+  it("keeps a Poll without a closing time Open forever", async () => {
+    const { pollId, optionIds } = await makePoll(null);
+
+    now = new Date(T0.getTime() + 3650 * DAY);
+    expect((await timed.getPollView(pollId, null))?.poll).toMatchObject({
+      closesAt: null,
+      isClosed: false,
+    });
+    expect(await timed.castVote({ pollId, optionId: optionIds[0], voterId: "alice" })).toBe("voted");
   });
 });

@@ -3,3 +3,4 @@ export const QUESTION_MAX_LENGTH = 200;
 export const OPTION_MAX_LENGTH = 100;
 export const MIN_OPTIONS = 2;
 export const MAX_OPTIONS = 10;
+export const MAX_CLOSING_DAYS = 30;

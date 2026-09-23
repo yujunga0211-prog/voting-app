@@ -4,7 +4,7 @@ import type { ResultOption } from "@/lib/polls";
 // 막대 너비 = 총 투표 수 대비 비율(percent). 최다 득표를 100%로 늘리지 않는다.
 // 색: "내 선택"만 파란색, 나머지는 중립 회색(validate_palette로 두 모드 구분도·대비 확인).
 // "내 선택"은 색 외에 굵은 글씨와 라벨로도 표시해 색만으로 구분하지 않는다.
-export function ResultsChart({
+export function ResultsBars({
   options,
   totalVotes,
   myOptionId,

@@ -189,7 +189,16 @@ describe("listPolls", () => {
     const id = await make("필드 확인", at(1));
 
     const [item] = (await timed.listPolls()).open;
-    expect(item).toEqual({ id, question: "필드 확인", createdAt: expect.any(Date), closesAt: at(1) });
+    expect(item).toEqual({
+      id,
+      question: "필드 확인",
+      createdAt: expect.any(Date),
+      closesAt: at(1),
+      isClosed: false,
+    });
+
+    now = at(1);
+    expect((await timed.listPolls()).closed[0].isClosed).toBe(true);
   });
 
   it("returns at most 20 Polls per section", async () => {
@@ -430,6 +439,16 @@ describe("closing time", () => {
     const view = await timed.getPollView(pollId, "late");
     if (view?.kind !== "results") throw new Error("expected results");
     expect(view.options.map((o) => o.votes)).toEqual([1, 0]);
+  });
+
+  it("still accepts a Vote just before the closing time", async () => {
+    const closesAt = new Date(T0.getTime() + HOUR);
+    const { pollId, optionIds } = await makePoll(closesAt);
+
+    now = new Date(closesAt.getTime() - 1);
+    expect(await timed.castVote({ pollId, optionId: optionIds[0], voterId: "just-in-time" })).toBe(
+      "voted",
+    );
   });
 
   it("shows Results of a Closed Poll to anyone, with my choice only for a Voter who voted", async () => {

@@ -43,9 +43,15 @@ export type CastVoteResult =
   | "poll_closed"
   | "option_not_in_poll";
 export type Clock = () => Date;
-export type PollSummary = { id: string; question: string; createdAt: Date; closesAt: Date | null };
+export type PollSummary = {
+  id: string;
+  question: string;
+  createdAt: Date;
+  closesAt: Date | null;
+  isClosed: boolean;
+};
 
-const SECTION_LIMIT = 20;
+const LIST_LIMIT = 20;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -89,13 +95,14 @@ function validatePollInput(question: string, rawOptions: string[], closesAt: Dat
 
 // clock은 Open/Closed 판정과 마감 시각 검증의 기준이다. 테스트는 원하는 시각을 주입한다.
 export function createPolls(sql: Sql, clock: Clock = () => new Date()) {
-  function toPoll(row: Record<string, unknown>): Poll {
+  // Open/Closed 판정은 이 한 곳에서 한다(목록·조회 모두). 투표 거부는 castVote의 SQL이 같은 규칙으로 한다.
+  function toPoll(row: Record<string, unknown>, now = clock()): Poll {
     const closesAt = row.closes_at === null ? null : new Date(row.closes_at as string);
     return {
       id: row.id as string,
       question: row.question as string,
       closesAt,
-      isClosed: closesAt !== null && clock() >= closesAt,
+      isClosed: closesAt !== null && now >= closesAt,
     };
   }
 
@@ -210,26 +217,25 @@ export function createPolls(sql: Sql, clock: Clock = () => new Date()) {
   // 홈 목록. 득표 관련 필드는 일부러 반환하지 않는다(ADR-0002: 목록으로 결과가 새지 않음).
   // open: 마감 임박순 → 마감 없는 Poll 최신순, closed: 최근 마감순, 각 최대 20개.
   async function listPolls(): Promise<{ open: PollSummary[]; closed: PollSummary[] }> {
-    const now = clock().toISOString();
+    const nowDate = clock();
+    const now = nowDate.toISOString();
     const [open, closed] = await Promise.all([
       sql`
         SELECT id, question, created_at, closes_at FROM polls
         WHERE closes_at IS NULL OR closes_at > ${now}::timestamptz
         ORDER BY closes_at ASC NULLS LAST, created_at DESC, id DESC
-        LIMIT ${SECTION_LIMIT}
+        LIMIT ${LIST_LIMIT}
       `,
       sql`
         SELECT id, question, created_at, closes_at FROM polls
         WHERE closes_at <= ${now}::timestamptz
         ORDER BY closes_at DESC, id DESC
-        LIMIT ${SECTION_LIMIT}
+        LIMIT ${LIST_LIMIT}
       `,
     ]);
     const toSummary = (r: Record<string, unknown>): PollSummary => ({
-      id: r.id as string,
-      question: r.question as string,
+      ...toPoll(r, nowDate),
       createdAt: new Date(r.created_at as string),
-      closesAt: r.closes_at === null ? null : new Date(r.closes_at as string),
     });
     return { open: open.map(toSummary), closed: closed.map(toSummary) };
   }

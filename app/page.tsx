@@ -2,10 +2,11 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { appPolls, type PollSummary } from "@/lib/polls";
 import { formatClosingLabel, toSeoulDateTimeLocal } from "@/lib/format";
+import { DEFAULT_CLOSING_DAYS } from "@/lib/poll-limits";
 import { CreatePollForm } from "./create-poll-form";
 
-// 생성 폼의 마감 시각 기본값: 지금부터 3일 뒤. 요청마다 렌더링하므로(connection) 요청 시각 기준이다.
-const DEFAULT_CLOSING_MS = 3 * 24 * 60 * 60 * 1000;
+// 요청 시각. 렌더링 중 new Date()를 직접 부르면 react-hooks/purity lint에 걸려서 함수로 감쌌다.
+// 요청마다 렌더링하므로(connection) 문제없다. Open/Closed 판정에는 쓰지 않는다(polls 모듈의 isClosed 사용).
 function requestTime(): Date {
   return new Date();
 }
@@ -23,7 +24,9 @@ export default async function Home() {
       <section className="mt-8">
         <h2 className="text-lg font-medium">새 Poll 만들기</h2>
         <CreatePollForm
-          defaultClosesAt={toSeoulDateTimeLocal(new Date(now.getTime() + DEFAULT_CLOSING_MS))}
+          defaultClosesAt={toSeoulDateTimeLocal(
+            new Date(now.getTime() + DEFAULT_CLOSING_DAYS * 24 * 60 * 60 * 1000),
+          )}
         />
       </section>
 
@@ -61,7 +64,7 @@ function PollSection({
               <Link href={`/polls/${poll.id}`} className="block py-3 hover:underline">
                 <span className="block break-words">{poll.question}</span>
                 <span className="text-sm text-zinc-500">
-                  {formatClosingLabel(poll.closesAt, now)}
+                  {formatClosingLabel(poll, now)}
                 </span>
               </Link>
             </li>

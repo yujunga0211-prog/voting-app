@@ -4,3 +4,4 @@ export const OPTION_MAX_LENGTH = 100;
 export const MIN_OPTIONS = 2;
 export const MAX_OPTIONS = 10;
 export const MAX_CLOSING_DAYS = 30;
+export const DEFAULT_CLOSING_DAYS = 3;

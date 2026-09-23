@@ -23,7 +23,8 @@ export type CreatePollResult = { ok: true; pollId: string } | { ok: false; error
 // isClosed는 저장하지 않고 clock과 closesAt으로 계산한다(ADR-0005).
 export type Poll = { id: string; question: string; closesAt: Date | null; isClosed: boolean };
 export type Option = { id: string; text: string };
-export type ResultOption = Option & { votes: number };
+// percent: 총 투표 수 대비 비율을 정수로 반올림한 값. 합계를 100으로 보정하지 않고, 총 0표면 0.
+export type ResultOption = Option & { votes: number; percent: number };
 export type PollView =
   | { kind: "form"; poll: Poll; options: Option[] }
   | {
@@ -157,12 +158,18 @@ export function createPolls(sql: Sql, clock: Clock = () => new Date()) {
       GROUP BY o.id
       ORDER BY o.position
     `;
-    const options = optionRows.map((o) => ({ id: o.id, text: o.text, votes: o.votes }));
+    const totalVotes = optionRows.reduce((sum, o) => sum + o.votes, 0);
+    const options = optionRows.map((o) => ({
+      id: o.id,
+      text: o.text,
+      votes: o.votes,
+      percent: totalVotes === 0 ? 0 : Math.round((o.votes / totalVotes) * 100),
+    }));
     return {
       kind: "results",
       poll,
       options,
-      totalVotes: options.reduce((sum, o) => sum + o.votes, 0),
+      totalVotes,
       myOptionId: myVote[0]?.option_id ?? null,
     };
   }

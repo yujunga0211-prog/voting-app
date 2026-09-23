@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { appPolls, type PollView } from "@/lib/polls";
 import { formatSeoulDateTime } from "@/lib/format";
 import { readVoterId } from "@/lib/voter-cookie";
+import { ResultsChart } from "./results-chart";
 import { VoteForm } from "./vote-form";
 
 export default async function PollPage({ params }: PageProps<"/polls/[id]">) {
@@ -46,32 +47,11 @@ function Results({ view }: { view: Extract<PollView, { kind: "results" }> }) {
   return (
     <section className="mt-6">
       <h2 className="text-lg font-medium">Results</h2>
-      <ul className="mt-3 flex flex-col gap-2">
-        {view.options.map((option) => {
-          const mine = option.id === view.myOptionId;
-          return (
-            <li
-              key={option.id}
-              className={`flex items-center justify-between gap-3 rounded border px-3 py-2 ${
-                mine
-                  ? "border-foreground font-medium"
-                  : "border-zinc-300 dark:border-zinc-700"
-              }`}
-            >
-              <span className="break-words">
-                {option.text}
-                {mine && (
-                  <span className="ml-2 rounded bg-foreground px-1.5 py-0.5 text-xs text-background">
-                    내 선택
-                  </span>
-                )}
-              </span>
-              <span className="shrink-0 tabular-nums">{option.votes}표</span>
-            </li>
-          );
-        })}
-      </ul>
-      <p className="mt-3 text-sm text-zinc-500">총 {view.totalVotes}표</p>
+      <ResultsChart
+        options={view.options}
+        totalVotes={view.totalVotes}
+        myOptionId={view.myOptionId}
+      />
     </section>
   );
 }

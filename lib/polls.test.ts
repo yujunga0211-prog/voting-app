@@ -240,9 +240,9 @@ describe("castVote and Results", () => {
       kind: "results",
       poll: { id: pollId, question: "점심?", closesAt: null, isClosed: false },
       options: [
-        { id: optionIds[0], text: "김밥", votes: 0 },
-        { id: optionIds[1], text: "라면", votes: 1 },
-        { id: optionIds[2], text: "돈까스", votes: 0 },
+        { id: optionIds[0], text: "김밥", votes: 0, percent: 0 },
+        { id: optionIds[1], text: "라면", votes: 1, percent: 100 },
+        { id: optionIds[2], text: "돈까스", votes: 0, percent: 0 },
       ],
       totalVotes: 1,
       myOptionId: optionIds[1],
@@ -465,5 +465,57 @@ describe("closing time", () => {
       isClosed: false,
     });
     expect(await timed.castVote({ pollId, optionId: optionIds[0], voterId: "alice" })).toBe("voted");
+  });
+});
+
+describe("Results percent", () => {
+  async function pollWithVotes(counts: number[]) {
+    const options = counts.map((_, i) => `o${i}`);
+    const created = await polls.createPoll({ question: "비율?", options });
+    if (!created.ok) throw new Error("expected Poll");
+    const form = await polls.getPollView(created.pollId, null);
+    if (!form) throw new Error("expected view");
+    let voter = 0;
+    for (const [i, count] of counts.entries()) {
+      for (let k = 0; k < count; k++) {
+        await polls.castVote({ pollId: created.pollId, optionId: form.options[i].id, voterId: `v${voter++}` });
+      }
+    }
+    return created.pollId;
+  }
+
+  async function percents(pollId: string, voterId: string) {
+    const view = await polls.getPollView(pollId, voterId);
+    if (view?.kind !== "results") throw new Error("expected results");
+    return view.options.map((o) => o.percent);
+  }
+
+  it("rounds each Option's share of the total to a whole percent", async () => {
+    const pollId = await pollWithVotes([1, 2]);
+    expect(await percents(pollId, "v0")).toEqual([33, 67]);
+  });
+
+  it("does not force the percents to add up to 100", async () => {
+    const pollId = await pollWithVotes([1, 1, 1]);
+    expect(await percents(pollId, "v0")).toEqual([33, 33, 33]);
+  });
+
+  it("gives 100 to a sole winner and 0 to Options without Votes", async () => {
+    const pollId = await pollWithVotes([0, 1, 0]);
+    expect(await percents(pollId, "v0")).toEqual([0, 100, 0]);
+  });
+
+  it("gives every Option 0 when a Closed Poll has no Votes", async () => {
+    let now = new Date("2026-09-23T03:00:00Z");
+    const timed = createPolls(testSql, () => now);
+    const closesAt = new Date(now.getTime() + 60_000);
+    const created = await timed.createPoll({ question: "0표?", options: ["a", "b"], closesAt });
+    if (!created.ok) throw new Error("expected Poll");
+
+    now = closesAt;
+    const view = await timed.getPollView(created.pollId, null);
+    expect(view).toMatchObject({ kind: "results", totalVotes: 0 });
+    if (view?.kind !== "results") throw new Error("expected results");
+    expect(view.options.map((o) => o.percent)).toEqual([0, 0]);
   });
 });

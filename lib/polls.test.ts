@@ -142,32 +142,65 @@ describe("createPoll validation", () => {
   });
 });
 
-describe("listRecentPolls", () => {
-  it("returns an empty list when there are no Polls", async () => {
-    expect(await polls.listRecentPolls()).toEqual([]);
+describe("listPolls", () => {
+  const T0 = new Date("2026-09-23T03:00:00Z");
+  const HOUR = 60 * 60 * 1000;
+  const at = (hours: number) => new Date(T0.getTime() + hours * HOUR);
+  let now = T0;
+  const timed = createPolls(testSql, () => now);
+
+  beforeEach(() => {
+    now = T0;
   });
 
-  it("lists Polls newest first with only id, question and creation time", async () => {
-    const first = await polls.createPoll({ question: "첫 번째?", options: ["a", "b"] });
-    const second = await polls.createPoll({ question: "두 번째?", options: ["a", "b"] });
-    if (!first.ok || !second.ok) throw new Error("expected Polls to be created");
+  async function make(question: string, closesAt: Date | null) {
+    const created = await timed.createPoll({ question, options: ["a", "b"], closesAt });
+    if (!created.ok) throw new Error(`expected Poll: ${JSON.stringify(created.errors)}`);
+    return created.pollId;
+  }
 
-    const list = await polls.listRecentPolls();
-    expect(list.map((p) => p.question)).toEqual(["두 번째?", "첫 번째?"]);
-    expect(list[0].id).toBe(second.pollId);
-    expect(list[0].createdAt).toBeInstanceOf(Date);
-    expect(Object.keys(list[0]).sort()).toEqual(["createdAt", "id", "question"]);
+  it("returns two empty sections when there are no Polls", async () => {
+    expect(await timed.listPolls()).toEqual({ open: [], closed: [] });
   });
 
-  it("returns at most the 20 newest Polls", async () => {
-    for (let i = 1; i <= 21; i++) {
-      await polls.createPoll({ question: `Poll ${i}`, options: ["a", "b"] });
-    }
+  it("lists Open Polls closing soonest first, then Polls without a closing time newest first", async () => {
+    await make("마감 없음 1", null);
+    await make("3시간 뒤", at(3));
+    await make("마감 없음 2", null);
+    await make("1시간 뒤", at(1));
 
-    const list = await polls.listRecentPolls();
-    expect(list).toHaveLength(20);
-    expect(list[0].question).toBe("Poll 21");
-    expect(list.map((p) => p.question)).not.toContain("Poll 1");
+    const { open, closed } = await timed.listPolls();
+    expect(open.map((p) => p.question)).toEqual(["1시간 뒤", "3시간 뒤", "마감 없음 2", "마감 없음 1"]);
+    expect(closed).toEqual([]);
+  });
+
+  it("lists Closed Polls most recently closed first, counting exactly the closing time as Closed", async () => {
+    await make("1시간 뒤", at(1));
+    await make("2시간 뒤", at(2));
+    await make("5시간 뒤", at(5));
+
+    now = at(2);
+    const { open, closed } = await timed.listPolls();
+    expect(closed.map((p) => p.question)).toEqual(["2시간 뒤", "1시간 뒤"]);
+    expect(open.map((p) => p.question)).toEqual(["5시간 뒤"]);
+  });
+
+  it("returns only id, question, creation time and closing time for each Poll", async () => {
+    const id = await make("필드 확인", at(1));
+
+    const [item] = (await timed.listPolls()).open;
+    expect(item).toEqual({ id, question: "필드 확인", createdAt: expect.any(Date), closesAt: at(1) });
+  });
+
+  it("returns at most 20 Polls per section", async () => {
+    for (let i = 1; i <= 21; i++) await make(`열림 ${i}`, null);
+    for (let i = 1; i <= 21; i++) await make(`닫힘 ${i}`, at(1));
+
+    now = at(1);
+    const { open, closed } = await timed.listPolls();
+    expect(open).toHaveLength(20);
+    expect(open[0].question).toBe("열림 21");
+    expect(closed).toHaveLength(20);
   });
 });
 

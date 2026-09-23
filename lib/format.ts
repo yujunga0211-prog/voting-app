@@ -35,3 +35,19 @@ export function parseSeoulDateTimeLocal(value: string): Date {
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return new Date(NaN);
   return new Date(`${value}:00${SEOUL_OFFSET}`);
 }
+
+// 목록의 마감 표시: "마감 없음" / "오늘 18:00 마감" / "D-2 · 9/25 18:00 마감" / "9/25 18:00 마감됨".
+// D-n은 한국 날짜 기준 남은 날 수다.
+export function formatClosingLabel(closesAt: Date | null, now: Date): string {
+  if (closesAt === null) return "마감 없음";
+  const c = toSeoulParts(closesAt);
+  const time = `${c.hour}:${c.minute}`;
+  const monthDay = `${Number(c.month)}/${Number(c.day)}`;
+  if (closesAt <= now) return `${monthDay} ${time} 마감됨`;
+
+  const n = toSeoulParts(now);
+  const days =
+    (Date.UTC(+c.year, +c.month - 1, +c.day) - Date.UTC(+n.year, +n.month - 1, +n.day)) /
+    (24 * 60 * 60 * 1000);
+  return days === 0 ? `오늘 ${time} 마감` : `D-${days} · ${monthDay} ${time} 마감`;
+}

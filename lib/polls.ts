@@ -42,9 +42,9 @@ export type CastVoteResult =
   | "poll_closed"
   | "option_not_in_poll";
 export type Clock = () => Date;
-export type PollSummary = { id: string; question: string; createdAt: Date };
+export type PollSummary = { id: string; question: string; createdAt: Date; closesAt: Date | null };
 
-const RECENT_POLLS_LIMIT = 20;
+const SECTION_LIMIT = 20;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -200,17 +200,34 @@ export function createPolls(sql: Sql, clock: Clock = () => new Date()) {
     return row.inserted ? "voted" : "already_voted";
   }
 
-  // 득표 관련 필드는 일부러 반환하지 않는다(ADR-0002: 목록으로 결과가 새지 않음).
-  async function listRecentPolls(): Promise<PollSummary[]> {
-    const rows = await sql`
-      SELECT id, question, created_at FROM polls
-      ORDER BY created_at DESC, id DESC
-      LIMIT ${RECENT_POLLS_LIMIT}
-    `;
-    return rows.map((r) => ({ id: r.id, question: r.question, createdAt: new Date(r.created_at) }));
+  // 홈 목록. 득표 관련 필드는 일부러 반환하지 않는다(ADR-0002: 목록으로 결과가 새지 않음).
+  // open: 마감 임박순 → 마감 없는 Poll 최신순, closed: 최근 마감순, 각 최대 20개.
+  async function listPolls(): Promise<{ open: PollSummary[]; closed: PollSummary[] }> {
+    const now = clock().toISOString();
+    const [open, closed] = await Promise.all([
+      sql`
+        SELECT id, question, created_at, closes_at FROM polls
+        WHERE closes_at IS NULL OR closes_at > ${now}::timestamptz
+        ORDER BY closes_at ASC NULLS LAST, created_at DESC, id DESC
+        LIMIT ${SECTION_LIMIT}
+      `,
+      sql`
+        SELECT id, question, created_at, closes_at FROM polls
+        WHERE closes_at <= ${now}::timestamptz
+        ORDER BY closes_at DESC, id DESC
+        LIMIT ${SECTION_LIMIT}
+      `,
+    ]);
+    const toSummary = (r: Record<string, unknown>): PollSummary => ({
+      id: r.id as string,
+      question: r.question as string,
+      createdAt: new Date(r.created_at as string),
+      closesAt: r.closes_at === null ? null : new Date(r.closes_at as string),
+    });
+    return { open: open.map(toSummary), closed: closed.map(toSummary) };
   }
 
-  return { createPoll, listRecentPolls, getPollView, castVote };
+  return { createPoll, listPolls, getPollView, castVote };
 }
 
 // 앱(페이지·Server Action)이 쓰는 인스턴스. 테스트는 createPolls에 테스트 DB 클라이언트를 넘긴다.

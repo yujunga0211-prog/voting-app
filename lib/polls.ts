@@ -68,7 +68,17 @@ export function createPolls(sql: Sql) {
     if (errors) return { ok: false, errors };
 
     // 단일 문장이라 원자적이다: Option 없는 Poll이 남지 않는다.
-    const rows = await sql`
+    const rows = await insertPoll(question, options).catch((error) => {
+      // JS toLowerCase와 Postgres lower()가 다른 문자(예: 그리스어 시그마)는 DB 인덱스에서만 걸린다.
+      if (error?.constraint === "options_poll_id_lower_text_key") return null;
+      throw error;
+    });
+    if (!rows) return { ok: false, errors: { options: "중복된 선택지가 있습니다." } };
+    return { ok: true, pollId: rows[0].id };
+  }
+
+  function insertPoll(question: string, options: string[]) {
+    return sql`
       WITH poll AS (
         INSERT INTO polls (question) VALUES (${question}) RETURNING id
       ), inserted AS (
@@ -78,7 +88,6 @@ export function createPolls(sql: Sql) {
       )
       SELECT id FROM poll
     `;
-    return { ok: true, pollId: rows[0].id };
   }
 
   // Results 공개 여부는 여기 한 곳에서만 정한다(ADR-0002): 이 Poll에 Vote한 Voter에게만 results.

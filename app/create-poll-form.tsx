@@ -16,7 +16,10 @@ export function CreatePollForm() {
   const [state, formAction, pending] = useActionState(createPollAction, null);
   const [question, setQuestion] = useState("");
   const [options, setOptions] = useState(() => Array.from({ length: MIN_OPTIONS }, newOption));
+  // 입력칸을 추가·제거하면 위치별 오류가 다른 칸에 붙으므로, 그 제출 결과의 위치별 오류는 숨긴다.
+  const [shiftedState, setShiftedState] = useState<typeof state>(null);
   const errors = state?.errors;
+  const optionAt = state !== shiftedState ? errors?.optionAt : undefined;
 
   const setOptionText = (key: number, text: string) =>
     setOptions((prev) => prev.map((o) => (o.key === key ? { ...o, text } : o)));
@@ -47,13 +50,16 @@ export function CreatePollForm() {
                 onChange={(e) => setOptionText(option.key, e.target.value)}
                 maxLength={OPTION_MAX_LENGTH}
                 aria-label={`선택지 ${index + 1}`}
-                aria-invalid={errors?.optionAt?.[index] ? true : undefined}
+                aria-invalid={optionAt?.[index] ? true : undefined}
                 className={`${inputClass} flex-1`}
               />
               {options.length > MIN_OPTIONS && (
                 <button
                   type="button"
-                  onClick={() => setOptions((prev) => prev.filter((o) => o.key !== option.key))}
+                  onClick={() => {
+                    setShiftedState(state);
+                    setOptions((prev) => prev.filter((o) => o.key !== option.key));
+                  }}
                   aria-label={`선택지 ${index + 1} 제거`}
                   className="rounded px-3 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
                 >
@@ -61,13 +67,16 @@ export function CreatePollForm() {
                 </button>
               )}
             </div>
-            {errors?.optionAt?.[index] && <ErrorText>{errors.optionAt[index]}</ErrorText>}
+            {optionAt?.[index] && <ErrorText>{optionAt[index]}</ErrorText>}
           </div>
         ))}
         {errors?.options && <ErrorText>{errors.options}</ErrorText>}
         <button
           type="button"
-          onClick={() => setOptions((prev) => [...prev, newOption()])}
+          onClick={() => {
+            setShiftedState(state);
+            setOptions((prev) => [...prev, newOption()]);
+          }}
           disabled={options.length >= MAX_OPTIONS}
           className="self-start text-sm text-zinc-600 hover:underline disabled:opacity-40 disabled:no-underline dark:text-zinc-400"
         >

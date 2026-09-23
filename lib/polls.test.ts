@@ -121,6 +121,12 @@ describe("createPoll validation", () => {
     });
   });
 
+  it("returns an error instead of failing when only the DB sees Options as duplicates", async () => {
+    // JS toLowerCase("ΑΣ") === "ας" 이지만 Postgres lower()는 "ασ"라서 JS 검사는 통과한다.
+    const created = await polls.createPoll({ question: "Q?", options: ["ΑΣ", "ασ"] });
+    expect(created).toEqual({ ok: false, errors: { options: "중복된 선택지가 있습니다." } });
+  });
+
   it("reports several errors at once", async () => {
     const created = await polls.createPoll({
       question: "",

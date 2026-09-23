@@ -5,5 +5,5 @@ import type { Sql } from "@/lib/db";
 export const testSql: Sql = neon(process.env.TEST_DATABASE_URL!);
 
 export async function resetDb() {
-  await testSql`TRUNCATE polls, options RESTART IDENTITY CASCADE`;
+  await testSql`TRUNCATE polls, options, votes RESTART IDENTITY CASCADE`;
 }

@@ -174,3 +174,125 @@ describe("getPollView", () => {
     expect(await polls.getPollView("not-a-uuid", null)).toBeNull();
   });
 });
+
+describe("castVote and Results", () => {
+  const alice = "voter-alice";
+  const bob = "voter-bob";
+
+  async function makePoll(question = "점심?", options = ["김밥", "라면", "돈까스"]) {
+    const created = await polls.createPoll({ question, options });
+    if (!created.ok) throw new Error("expected Poll to be created");
+    const view = await polls.getPollView(created.pollId, null);
+    if (!view) throw new Error("expected Poll view");
+    return { pollId: created.pollId, optionIds: view.options.map((o) => o.id) };
+  }
+
+  it("shows the form to a Voter who has not voted", async () => {
+    const { pollId } = await makePoll();
+    expect((await polls.getPollView(pollId, alice))?.kind).toBe("form");
+  });
+
+  it("records a Vote and then shows Results with 0-vote Options, total and my choice in form order", async () => {
+    const { pollId, optionIds } = await makePoll();
+
+    expect(await polls.castVote({ pollId, optionId: optionIds[1], voterId: alice })).toBe("voted");
+
+    expect(await polls.getPollView(pollId, alice)).toEqual({
+      kind: "results",
+      poll: { id: pollId, question: "점심?" },
+      options: [
+        { id: optionIds[0], text: "김밥", votes: 0 },
+        { id: optionIds[1], text: "라면", votes: 1 },
+        { id: optionIds[2], text: "돈까스", votes: 0 },
+      ],
+      totalVotes: 1,
+      myOptionId: optionIds[1],
+    });
+  });
+
+  it("counts other Voters' Votes in Results", async () => {
+    const { pollId, optionIds } = await makePoll();
+    await polls.castVote({ pollId, optionId: optionIds[0], voterId: bob });
+    await polls.castVote({ pollId, optionId: optionIds[0], voterId: "voter-carol" });
+    await polls.castVote({ pollId, optionId: optionIds[2], voterId: alice });
+
+    const view = await polls.getPollView(pollId, alice);
+    if (view?.kind !== "results") throw new Error("expected results");
+    expect(view.options.map((o) => o.votes)).toEqual([2, 0, 1]);
+    expect(view.totalVotes).toBe(3);
+    expect(view.myOptionId).toBe(optionIds[2]);
+  });
+
+  it("does not show Results to a Voter just because someone else voted", async () => {
+    const { pollId, optionIds } = await makePoll();
+    await polls.castVote({ pollId, optionId: optionIds[0], voterId: bob });
+
+    expect((await polls.getPollView(pollId, alice))?.kind).toBe("form");
+    expect((await polls.getPollView(pollId, null))?.kind).toBe("form");
+  });
+
+  it("rejects a second Vote by the same Voter without changing the counts", async () => {
+    const { pollId, optionIds } = await makePoll();
+    await polls.castVote({ pollId, optionId: optionIds[0], voterId: alice });
+
+    expect(await polls.castVote({ pollId, optionId: optionIds[1], voterId: alice })).toBe(
+      "already_voted",
+    );
+
+    const view = await polls.getPollView(pollId, alice);
+    if (view?.kind !== "results") throw new Error("expected results");
+    expect(view.options.map((o) => o.votes)).toEqual([1, 0, 0]);
+    expect(view.myOptionId).toBe(optionIds[0]);
+  });
+
+  it("records exactly one Vote when the same Voter submits twice at the same time", async () => {
+    const { pollId, optionIds } = await makePoll();
+
+    const outcomes = await Promise.all([
+      polls.castVote({ pollId, optionId: optionIds[0], voterId: alice }),
+      polls.castVote({ pollId, optionId: optionIds[1], voterId: alice }),
+    ]);
+
+    expect(outcomes.sort()).toEqual(["already_voted", "voted"]);
+    const view = await polls.getPollView(pollId, alice);
+    if (view?.kind !== "results") throw new Error("expected results");
+    expect(view.totalVotes).toBe(1);
+  });
+
+  it("rejects an Option that belongs to another Poll", async () => {
+    const a = await makePoll("A?", ["a1", "a2"]);
+    const b = await makePoll("B?", ["b1", "b2"]);
+
+    expect(
+      await polls.castVote({ pollId: a.pollId, optionId: b.optionIds[0], voterId: alice }),
+    ).toBe("option_not_in_poll");
+    expect(
+      await polls.castVote({ pollId: a.pollId, optionId: "not-a-uuid", voterId: alice }),
+    ).toBe("option_not_in_poll");
+    expect((await polls.getPollView(a.pollId, alice))?.kind).toBe("form");
+  });
+
+  it("reports a Poll that does not exist", async () => {
+    const { optionIds } = await makePoll();
+    expect(
+      await polls.castVote({
+        pollId: "3f2b8c1e-9d4a-4e7b-8a6c-1b2d3e4f5a6b",
+        optionId: optionIds[0],
+        voterId: alice,
+      }),
+    ).toBe("poll_not_found");
+    expect(
+      await polls.castVote({ pollId: "not-a-uuid", optionId: optionIds[0], voterId: alice }),
+    ).toBe("poll_not_found");
+  });
+
+  it("lets the same Voter vote in a different Poll", async () => {
+    const a = await makePoll("A?", ["a1", "a2"]);
+    const b = await makePoll("B?", ["b1", "b2"]);
+    await polls.castVote({ pollId: a.pollId, optionId: a.optionIds[0], voterId: alice });
+
+    expect(await polls.castVote({ pollId: b.pollId, optionId: b.optionIds[1], voterId: alice })).toBe(
+      "voted",
+    );
+  });
+});

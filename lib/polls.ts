@@ -14,7 +14,18 @@ export type CreatePollResult = { ok: true; pollId: string } | { ok: false; error
 
 export type Poll = { id: string; question: string };
 export type Option = { id: string; text: string };
-export type PollView = { kind: "form"; poll: Poll; options: Option[] };
+export type ResultOption = Option & { votes: number };
+export type PollView =
+  | { kind: "form"; poll: Poll; options: Option[] }
+  | {
+      kind: "results";
+      poll: Poll;
+      options: ResultOption[];
+      totalVotes: number;
+      myOptionId: string;
+    };
+export type CastVoteInput = { pollId: string; optionId: string; voterId: string };
+export type CastVoteResult = "voted" | "already_voted" | "poll_not_found" | "option_not_in_poll";
 export type PollSummary = { id: string; question: string; createdAt: Date };
 
 const RECENT_POLLS_LIMIT = 20;
@@ -70,19 +81,71 @@ export function createPolls(sql: Sql) {
     return { ok: true, pollId: rows[0].id };
   }
 
-  async function getPollView(pollId: string, _voterId: string | null): Promise<PollView | null> {
+  // Results 공개 여부는 여기 한 곳에서만 정한다(ADR-0002): 이 Poll에 Vote한 Voter에게만 results.
+  async function getPollView(pollId: string, voterId: string | null): Promise<PollView | null> {
     // 형식이 잘못된 id는 DB 오류 대신 "없음"으로 취급한다.
     if (!UUID_PATTERN.test(pollId)) return null;
     const pollRows = await sql`SELECT id, question FROM polls WHERE id = ${pollId}`;
     if (pollRows.length === 0) return null;
+    const poll = { id: pollRows[0].id, question: pollRows[0].question };
+
+    const myVote =
+      voterId === null
+        ? []
+        : await sql`SELECT option_id FROM votes WHERE poll_id = ${pollId} AND voter_id = ${voterId}`;
+
+    if (myVote.length === 0) {
+      const optionRows = await sql`
+        SELECT id, text FROM options WHERE poll_id = ${pollId} ORDER BY position
+      `;
+      return { kind: "form", poll, options: optionRows.map((o) => ({ id: o.id, text: o.text })) };
+    }
+
     const optionRows = await sql`
-      SELECT id, text FROM options WHERE poll_id = ${pollId} ORDER BY position
+      SELECT o.id, o.text, count(v.id)::int AS votes
+      FROM options o LEFT JOIN votes v ON v.option_id = o.id
+      WHERE o.poll_id = ${pollId}
+      GROUP BY o.id
+      ORDER BY o.position
     `;
+    const options = optionRows.map((o) => ({ id: o.id, text: o.text, votes: o.votes }));
     return {
-      kind: "form",
-      poll: { id: pollRows[0].id, question: pollRows[0].question },
-      options: optionRows.map((o) => ({ id: o.id, text: o.text })),
+      kind: "results",
+      poll,
+      options,
+      totalVotes: options.reduce((sum, o) => sum + o.votes, 0),
+      myOptionId: myVote[0].option_id,
     };
+  }
+
+  async function castVote({ pollId, optionId, voterId }: CastVoteInput): Promise<CastVoteResult> {
+    if (!UUID_PATTERN.test(pollId)) return "poll_not_found";
+    if (!UUID_PATTERN.test(optionId)) {
+      const exists = await sql`SELECT 1 FROM polls WHERE id = ${pollId}`;
+      return exists.length === 0 ? "poll_not_found" : "option_not_in_poll";
+    }
+
+    // 한 문장으로 확인과 삽입을 한다. 중복은 UNIQUE(poll_id, voter_id)가 막고,
+    // ON CONFLICT DO NOTHING으로 예외 대신 "삽입 안 됨"이 되어 동시 제출에도 한 표만 남는다.
+    const [row] = await sql`
+      WITH poll AS (
+        SELECT id FROM polls WHERE id = ${pollId}
+      ), option AS (
+        SELECT id FROM options WHERE id = ${optionId} AND poll_id = ${pollId}
+      ), inserted AS (
+        INSERT INTO votes (poll_id, option_id, voter_id)
+        SELECT ${pollId}, option.id, ${voterId} FROM option
+        ON CONFLICT (poll_id, voter_id) DO NOTHING
+        RETURNING id
+      )
+      SELECT
+        EXISTS (SELECT 1 FROM poll) AS poll_exists,
+        EXISTS (SELECT 1 FROM option) AS option_in_poll,
+        EXISTS (SELECT 1 FROM inserted) AS inserted
+    `;
+    if (!row.poll_exists) return "poll_not_found";
+    if (!row.option_in_poll) return "option_not_in_poll";
+    return row.inserted ? "voted" : "already_voted";
   }
 
   // 득표 관련 필드는 일부러 반환하지 않는다(ADR-0002: 목록으로 결과가 새지 않음).
@@ -95,7 +158,7 @@ export function createPolls(sql: Sql) {
     return rows.map((r) => ({ id: r.id, question: r.question, createdAt: new Date(r.created_at) }));
   }
 
-  return { createPoll, listRecentPolls, getPollView };
+  return { createPoll, listRecentPolls, getPollView, castVote };
 }
 
 // 앱(페이지·Server Action)이 쓰는 인스턴스. 테스트는 createPolls에 테스트 DB 클라이언트를 넘긴다.

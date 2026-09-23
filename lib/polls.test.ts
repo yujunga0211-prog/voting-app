@@ -136,6 +136,35 @@ describe("createPoll validation", () => {
   });
 });
 
+describe("listRecentPolls", () => {
+  it("returns an empty list when there are no Polls", async () => {
+    expect(await polls.listRecentPolls()).toEqual([]);
+  });
+
+  it("lists Polls newest first with only id, question and creation time", async () => {
+    const first = await polls.createPoll({ question: "첫 번째?", options: ["a", "b"] });
+    const second = await polls.createPoll({ question: "두 번째?", options: ["a", "b"] });
+    if (!first.ok || !second.ok) throw new Error("expected Polls to be created");
+
+    const list = await polls.listRecentPolls();
+    expect(list.map((p) => p.question)).toEqual(["두 번째?", "첫 번째?"]);
+    expect(list[0].id).toBe(second.pollId);
+    expect(list[0].createdAt).toBeInstanceOf(Date);
+    expect(Object.keys(list[0]).sort()).toEqual(["createdAt", "id", "question"]);
+  });
+
+  it("returns at most the 20 newest Polls", async () => {
+    for (let i = 1; i <= 21; i++) {
+      await polls.createPoll({ question: `Poll ${i}`, options: ["a", "b"] });
+    }
+
+    const list = await polls.listRecentPolls();
+    expect(list).toHaveLength(20);
+    expect(list[0].question).toBe("Poll 21");
+    expect(list.map((p) => p.question)).not.toContain("Poll 1");
+  });
+});
+
 describe("getPollView", () => {
   it("returns null for a Poll id that does not exist", async () => {
     expect(await polls.getPollView("3f2b8c1e-9d4a-4e7b-8a6c-1b2d3e4f5a6b", null)).toBeNull();

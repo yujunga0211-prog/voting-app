@@ -15,6 +15,9 @@ export type CreatePollResult = { ok: true; pollId: string } | { ok: false; error
 export type Poll = { id: string; question: string };
 export type Option = { id: string; text: string };
 export type PollView = { kind: "form"; poll: Poll; options: Option[] };
+export type PollSummary = { id: string; question: string; createdAt: Date };
+
+const RECENT_POLLS_LIMIT = 20;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -82,7 +85,17 @@ export function createPolls(sql: Sql) {
     };
   }
 
-  return { createPoll, getPollView };
+  // 득표 관련 필드는 일부러 반환하지 않는다(ADR-0002: 목록으로 결과가 새지 않음).
+  async function listRecentPolls(): Promise<PollSummary[]> {
+    const rows = await sql`
+      SELECT id, question, created_at FROM polls
+      ORDER BY created_at DESC, id DESC
+      LIMIT ${RECENT_POLLS_LIMIT}
+    `;
+    return rows.map((r) => ({ id: r.id, question: r.question, createdAt: new Date(r.created_at) }));
+  }
+
+  return { createPoll, listRecentPolls, getPollView };
 }
 
 // 앱(페이지·Server Action)이 쓰는 인스턴스. 테스트는 createPolls에 테스트 DB 클라이언트를 넘긴다.

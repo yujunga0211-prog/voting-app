@@ -2,10 +2,9 @@
 
 import { useActionState, useState } from "react";
 import { createPollAction } from "./actions";
+import { inputClass, primaryButtonClass } from "./ui";
 import { MAX_OPTIONS, MIN_OPTIONS, OPTION_MAX_LENGTH, QUESTION_MAX_LENGTH } from "@/lib/poll-limits";
 
-const inputClass =
-  "rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900";
 
 let nextKey = 0;
 const newOption = () => ({ key: nextKey++, text: "" });
@@ -28,7 +27,7 @@ export function CreatePollForm({ defaultClosesAt }: { defaultClosesAt: string })
     setOptions((prev) => prev.map((o) => (o.key === key ? { ...o, text } : o)));
 
   return (
-    <form action={formAction} className="mt-4 flex flex-col gap-4">
+    <form action={formAction} className="mt-5 flex flex-col gap-6">
       <label className="flex flex-col gap-1">
         <span className="text-sm font-medium">질문</span>
         <input
@@ -36,6 +35,7 @@ export function CreatePollForm({ defaultClosesAt }: { defaultClosesAt: string })
           value={question}
           onChange={(e) => setQuestion(e.target.value)}
           maxLength={QUESTION_MAX_LENGTH}
+          placeholder="예: 이번 MT 장소는 어디가 좋을까요?"
           aria-invalid={errors?.question ? true : undefined}
           className={inputClass}
         />
@@ -53,6 +53,7 @@ export function CreatePollForm({ defaultClosesAt }: { defaultClosesAt: string })
                 onChange={(e) => setOptionText(option.key, e.target.value)}
                 maxLength={OPTION_MAX_LENGTH}
                 aria-label={`선택지 ${index + 1}`}
+                placeholder={`선택지 ${index + 1}`}
                 aria-invalid={optionAt?.[index] ? true : undefined}
                 className={`${inputClass} flex-1`}
               />
@@ -64,7 +65,7 @@ export function CreatePollForm({ defaultClosesAt }: { defaultClosesAt: string })
                     setOptions((prev) => prev.filter((o) => o.key !== option.key));
                   }}
                   aria-label={`선택지 ${index + 1} 제거`}
-                  className="rounded px-3 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                  className="rounded-xl px-3 text-muted transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-500/10"
                 >
                   ✕
                 </button>
@@ -81,25 +82,26 @@ export function CreatePollForm({ defaultClosesAt }: { defaultClosesAt: string })
             setOptions((prev) => [...prev, newOption()]);
           }}
           disabled={options.length >= MAX_OPTIONS}
-          className="self-start text-sm text-zinc-600 hover:underline disabled:opacity-40 disabled:no-underline dark:text-zinc-400"
+          className="rounded-xl border border-dashed border-line py-2.5 text-sm font-medium text-muted transition hover:border-accent hover:text-accent disabled:opacity-40 disabled:hover:border-line disabled:hover:text-muted"
         >
           + 선택지 추가 ({options.length}/{MAX_OPTIONS})
         </button>
       </fieldset>
 
-      <fieldset className="flex flex-col gap-2">
-        <label className="flex items-center gap-2 text-sm font-medium">
+      <fieldset className="flex flex-col gap-3 rounded-xl bg-background p-4">
+        <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
           <input
             type="checkbox"
             name="hasClosesAt"
             checked={hasClosesAt}
+            className="size-4 accent-accent"
             onChange={(e) => setHasClosesAt(e.target.checked)}
           />
           마감 시각 설정
         </label>
         {hasClosesAt ? (
           <label className="flex flex-col gap-1">
-            <span className="text-sm text-zinc-500">한국 시간 기준, 30일 이내</span>
+            <span className="text-sm text-muted">한국 시간 기준, 30일 이내</span>
             <input
               type="datetime-local"
               name="closesAt"
@@ -107,11 +109,11 @@ export function CreatePollForm({ defaultClosesAt }: { defaultClosesAt: string })
               onChange={(e) => setClosesAt(e.target.value)}
               aria-label="마감 시각"
               aria-invalid={errors?.closesAt ? true : undefined}
-              className={`${inputClass} self-start`}
+              className={`${inputClass} self-start bg-surface`}
             />
           </label>
         ) : (
-          <p className="text-sm text-zinc-500">마감 없이 계속 열려 있는 Poll이 됩니다.</p>
+          <p className="text-sm text-muted">마감 없이 계속 열려 있는 Poll이 됩니다.</p>
         )}
         {hasClosesAt && errors?.closesAt && <ErrorText>{errors.closesAt}</ErrorText>}
       </fieldset>
@@ -119,7 +121,7 @@ export function CreatePollForm({ defaultClosesAt }: { defaultClosesAt: string })
       <button
         type="submit"
         disabled={pending}
-        className="self-start rounded bg-foreground px-4 py-2 font-medium text-background disabled:opacity-50"
+        className={`${primaryButtonClass} self-end`}
       >
         {pending ? "만드는 중…" : "만들기"}
       </button>

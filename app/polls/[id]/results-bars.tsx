@@ -14,8 +14,8 @@ export function ResultsBars({
   myOptionId: string | null;
 }) {
   return (
-    <figure className="mt-3">
-      <ul className="flex flex-col gap-4">
+    <figure className="mt-4">
+      <ul className="flex flex-col gap-5">
         {options.map((option) => {
           const mine = option.id === myOptionId;
           return (
@@ -24,21 +24,21 @@ export function ResultsBars({
                 <span className={`min-w-0 break-words ${mine ? "font-semibold" : ""}`}>
                   {option.text}
                   {mine && (
-                    <span className="ml-2 rounded bg-foreground px-1.5 py-0.5 text-xs font-medium text-background">
+                    <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-on-accent">
                       내 선택
                     </span>
                   )}
                 </span>
-                <span className="shrink-0 tabular-nums text-zinc-600 dark:text-zinc-400">
-                  {option.votes}표 · <span className="text-foreground">{option.percent}%</span>
+                <span className="shrink-0 tabular-nums text-muted">
+                  {option.votes}표 · <span className="font-semibold text-foreground">{option.percent}%</span>
                 </span>
               </div>
               <div
-                className="mt-1.5 h-2 w-full rounded-r bg-zinc-100 dark:bg-zinc-800"
+                className="mt-2 h-3 w-full overflow-hidden rounded-full bg-line"
                 role="presentation"
               >
                 <div
-                  className={`h-full rounded-r ${
+                  className={`h-full rounded-full transition-[width] duration-700 ${
                     mine ? "bg-[#256abf] dark:bg-[#3987e5]" : "bg-[#8a8a86] dark:bg-[#7c7c78]"
                   }`}
                   style={{ width: `${option.percent}%` }}
@@ -48,7 +48,7 @@ export function ResultsBars({
           );
         })}
       </ul>
-      <figcaption className="mt-4 text-sm text-zinc-500">
+      <figcaption className="mt-6 text-sm text-muted">
         {totalVotes === 0 ? "아직 투표가 없습니다." : `총 ${totalVotes}표`}
       </figcaption>
     </figure>

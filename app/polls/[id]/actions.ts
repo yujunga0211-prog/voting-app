@@ -1,6 +1,7 @@
 "use server";
 
 import { notFound, redirect } from "next/navigation";
+import { isAdmin } from "@/lib/admin-session";
 import { appPolls } from "@/lib/polls";
 import { getOrIssueVoterId } from "@/lib/voter-cookie";
 
@@ -22,4 +23,11 @@ export async function voteAction(
   // "voted", "already_voted", "poll_closed" 모두 같은 Poll 페이지로 보내면 Results가 보인다
   // (Closed Poll은 누구에게나 Results와 "마감된 Poll입니다" 안내가 보인다).
   redirect(`/polls/${pollId}`);
+}
+
+// Poll 삭제는 Admin만 한다(ADR-0006). 버튼은 Admin에게만 보이지만 여기서 다시 확인한다.
+export async function deletePollAction(pollId: string): Promise<void> {
+  if (!(await isAdmin())) redirect("/admin/login");
+  await appPolls().deletePoll(pollId);
+  redirect("/");
 }

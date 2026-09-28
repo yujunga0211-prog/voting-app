@@ -538,3 +538,30 @@ describe("Results percent", () => {
     expect(view.options.map((o) => o.percent)).toEqual([0, 0]);
   });
 });
+
+describe("deletePoll", () => {
+  it("removes the Poll, its Options and its Votes, and it disappears from the list", async () => {
+    const created = await polls.createPoll({ question: "지울 Poll?", options: ["예", "아니오"] });
+    const kept = await polls.createPoll({ question: "남길 Poll?", options: ["a", "b"] });
+    if (!created.ok || !kept.ok) throw new Error("expected Polls to be created");
+    const view = await polls.getPollView(created.pollId, null);
+    await polls.castVote({ pollId: created.pollId, optionId: view!.options[0].id, voterId: "v1" });
+
+    expect(await polls.deletePoll(created.pollId)).toBe(true);
+
+    expect(await polls.getPollView(created.pollId, null)).toBeNull();
+    const [{ options, votes }] = await testSql`
+      SELECT
+        (SELECT count(*)::int FROM options WHERE poll_id = ${created.pollId}) AS options,
+        (SELECT count(*)::int FROM votes WHERE poll_id = ${created.pollId}) AS votes
+    `;
+    expect({ options, votes }).toEqual({ options: 0, votes: 0 });
+    const { open } = await polls.listPolls();
+    expect(open.map((p) => p.question)).toEqual(["남길 Poll?"]);
+  });
+
+  it("reports false for an unknown or malformed Poll id", async () => {
+    expect(await polls.deletePoll("00000000-0000-4000-8000-000000000000")).toBe(false);
+    expect(await polls.deletePoll("not-a-uuid")).toBe(false);
+  });
+});

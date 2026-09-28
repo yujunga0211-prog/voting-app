@@ -240,7 +240,24 @@ export function createPolls(sql: Sql, clock: Clock = () => new Date()) {
     return { open: open.map(toSummary), closed: closed.map(toSummary) };
   }
 
-  return { createPoll, listPolls, getPollView, castVote };
+  // Admin 전용(권한 확인은 호출하는 Server Action이 한다, ADR-0006). Vote·Option·Poll을 한 문장으로 지운다.
+  // FK는 문장이 끝날 때 확인되므로 한 문장 안에서 셋을 함께 지우면 순서와 상관없이 통과한다.
+  async function deletePoll(pollId: string): Promise<boolean> {
+    if (!UUID_PATTERN.test(pollId)) return false;
+    const [row] = await sql`
+      WITH deleted_votes AS (
+        DELETE FROM votes WHERE poll_id = ${pollId}
+      ), deleted_options AS (
+        DELETE FROM options WHERE poll_id = ${pollId}
+      ), deleted_poll AS (
+        DELETE FROM polls WHERE id = ${pollId} RETURNING id
+      )
+      SELECT EXISTS (SELECT 1 FROM deleted_poll) AS deleted
+    `;
+    return row.deleted;
+  }
+
+  return { createPoll, listPolls, getPollView, castVote, deletePoll };
 }
 
 // 앱(페이지·Server Action)이 쓰는 인스턴스. 테스트는 createPolls에 테스트 DB 클라이언트를 넘긴다.

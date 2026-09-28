@@ -1,11 +1,11 @@
 # Voting
 
-누구나 질문 하나와 선택지를 올리면, 사람들이 그중 하나를 골라 투표하고 결과(득표수)를 보는 간단한 투표 앱.
+**Admin**이 질문 하나와 선택지를 올리면, 사람들이 그중 하나를 골라 투표하고 결과(득표수)를 보는 간단한 투표 앱.
 
 ## Language
 
 **Poll**:
-질문 문장(`question`) 하나와 2~10개의 **Option**, 그리고 선택적인 **마감 시각**으로 이루어진 투표 단위. 로그인 없이 누구나 만들 수 있고, 생성 후에는 수정·삭제할 수 없다(마감 시각도 바꿀 수 없다).
+질문 문장(`question`) 하나와 2~10개의 **Option**, 그리고 선택적인 **마감 시각**으로 이루어진 투표 단위. **Admin**만 만들고 삭제할 수 있다. 생성 후에는 수정할 수 없다(마감 시각도 바꿀 수 없다).
 _Avoid_: 설문, Survey, Question(질문 문장 자체만 가리킬 때 `poll.question`으로 사용)
 
 **마감 시각**:
@@ -28,6 +28,10 @@ _Avoid_: Choice, Answer, 항목
 한 **Voter**가 한 **Poll**에서 **Option** 하나를 고른 기록. 한 Voter는 한 Poll에 Vote를 하나만 가질 수 있고, 변경·취소할 수 없다.
 _Avoid_: Ballot, Response
 
+**Admin**:
+공유 비밀번호(`ADMIN_TOKEN`) 하나로 로그인한 운영자. 개인 계정이 아니라서 Admin끼리는 구분되지 않는다. Poll을 만들고 삭제할 수 있다 ([ADR-0006](docs/adr/0006-shared-admin-password.md)).
+_Avoid_: 관리자 계정, Owner, Creator, 작성자
+
 **Voter**:
 `voter_id` 쿠키로 식별되는 익명 브라우저. 사람이나 계정이 아니므로, 같은 사람이 다른 브라우저로 여러 Voter가 될 수 있다.
 _Avoid_: User, 참여자, 계정
@@ -43,7 +47,8 @@ _Avoid_: 통계, 차트
 - Closed Poll에는 Vote할 수 없다 ([ADR-0005](docs/adr/0005-closing-time-computed-and-immutable.md)).
 - 질문 문장 1~200자, Option 문구 1~100자, Option 2~10개.
 - 마감 시각은 만들 때 기준으로 미래여야 하고 30일 이내여야 한다.
+- Poll 생성·삭제는 Admin만 한다. 삭제하면 그 Poll의 Option과 Vote도 함께 지워진다 ([ADR-0006](docs/adr/0006-shared-admin-password.md)).
 
 ## 이번 버전 범위 밖
 
-로그인, 실시간 갱신, 마감 알림(리마인더), 마감 연장·조기 마감, Poll 수정·삭제, 투표 변경, 스팸 방지, 페이지네이션, 복수 선택.
+Voter 로그인, Admin별 개인 계정, 실시간 갱신, 마감 알림(리마인더), 마감 연장·조기 마감, Poll 수정, 투표 변경, 스팸 방지, 페이지네이션, 복수 선택.

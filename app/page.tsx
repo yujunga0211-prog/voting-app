@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { connection } from "next/server";
+import { isAdmin } from "@/lib/admin-session";
 import { appPolls, type PollSummary } from "@/lib/polls";
 import { toSeoulDateTimeLocal } from "@/lib/format";
 import { ClosingBadge } from "./closing-badge";
@@ -17,29 +18,38 @@ export default async function Home() {
   // 새 Poll과 마감 상태가 바로 반영되도록 요청마다 렌더링한다.
   await connection();
   const now = requestTime();
-  const { open, closed } = await appPolls().listPolls();
+  const [{ open, closed }, admin] = await Promise.all([appPolls().listPolls(), isAdmin()]);
 
   return (
     <main className="mx-auto w-full max-w-2xl px-4 py-10">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">무엇이든 물어보세요</h1>
-        <p className="mt-2 text-muted">질문과 선택지를 올리면 누구나 익명으로 투표할 수 있어요.</p>
+        <p className="mt-2 text-muted">운영자가 올린 질문에 누구나 익명으로 투표할 수 있어요.</p>
       </div>
 
-      <section className={`${cardClass} mt-8`}>
-        <h2 className="text-lg font-semibold">새 Poll 만들기</h2>
-        <CreatePollForm
-          defaultClosesAt={toSeoulDateTimeLocal(
-            new Date(now.getTime() + DEFAULT_CLOSING_DAYS * 24 * 60 * 60 * 1000),
-          )}
-        />
-      </section>
+      {admin ? (
+        <section className={`${cardClass} mt-8`}>
+          <h2 className="text-lg font-semibold">새 Poll 만들기</h2>
+          <CreatePollForm
+            defaultClosesAt={toSeoulDateTimeLocal(
+              new Date(now.getTime() + DEFAULT_CLOSING_DAYS * 24 * 60 * 60 * 1000),
+            )}
+          />
+        </section>
+      ) : (
+        <p className="mt-8 rounded-2xl bg-accent-soft px-5 py-4 text-sm">
+          새 Poll은 운영자만 만들 수 있어요.{" "}
+          <Link href="/admin/login" className="font-semibold text-accent hover:underline">
+            운영자 로그인
+          </Link>
+        </p>
+      )}
 
       <PollSection
         title="진행 중"
         polls={open}
         now={now}
-        empty="진행 중인 Poll이 없습니다. 첫 Poll을 만들어 보세요."
+        empty="진행 중인 Poll이 없습니다."
       />
       <PollSection title="마감됨" polls={closed} now={now} empty="아직 마감된 Poll이 없습니다." />
     </main>

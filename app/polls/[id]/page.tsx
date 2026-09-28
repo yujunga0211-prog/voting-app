@@ -4,7 +4,9 @@ import { appPolls, type Poll, type PollView } from "@/lib/polls";
 import { formatSeoulDateTime } from "@/lib/format";
 import { ClosingBadge } from "../../closing-badge";
 import { cardClass } from "../../ui";
+import { isAdmin } from "@/lib/admin-session";
 import { readVoterId } from "@/lib/voter-cookie";
+import { DeletePollButton } from "./delete-poll-button";
 import { ResultsBars } from "./results-bars";
 import { VoteForm } from "./vote-form";
 
@@ -28,6 +30,7 @@ export default async function PollPage({ params }: PageProps<"/polls/[id]">) {
           <Results view={view} />
         )}
       </article>
+      {(await isAdmin()) && <DeletePollButton pollId={view.poll.id} />}
     </main>
   );
 }
